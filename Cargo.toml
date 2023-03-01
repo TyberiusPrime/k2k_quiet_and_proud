@@ -1,0 +1,50 @@
+[package]
+name = "k2k_advantage"
+version = "0.1.0"
+authors = [ "Tyberius Prime <tyberius_prime@coonabibba.de>"]
+edition = "2018"
+
+[dependencies]
+stm32f1xx-hal = { version = "0.6.1", features = ["rt", "stm32f103", "stm32-usbd", "high" ] }
+#stm32-usbd = { version="0.5.0" }
+cortex-m = "0.6"
+cortex-m-rt = { version = "0.6.10", features = ["device"] }
+#panic-halt = "*"
+panic-semihosting="*"
+#stm32-usbd = { version = "0.5.1", features = ["stm32f103xx"] }
+usb-device = "0.2.0"
+cortex-m-rtfm = "0.4.1" #todo: upgrade to 0.4.3
+cortex-m-semihosting = "0.3.2"
+either = {version = "1.5", default-features = false}
+nb = "0.1.2"
+no-std-compat = {version="0.4.0", features=["alloc", ]}
+embedded-hal = "0.2.3"
+#alloc-cortex-m = "0.3.5"
+alloc-cortex-m = "0.4.0" # {git = "https://github.com/rust-embedded/alloc-cortex-m"}
+debouncing="0.1.0"
+ssd1306="0.3.1"# git = "https://github.com/jamwaffles/ssd1306"}# "0.2.6"
+#display-interface = "0.4"
+#display-interface-i2c = "0.4"
+
+[dependencies.smallbitvec]
+git = "https://github.com/servo/smallbitvec"
+version = "2.4.0"
+
+[dependencies.keytokey]
+#git = "https://github.com/TyberiusPrime/KeyToKey.git"
+path = "../keytokey"
+
+[dependencies.stm32f1]
+version = "0.11.0" # must match stm32f1xx-hal
+features = ["stm32f103", "rt"]
+
+[profile.dev]
+lto = true
+opt-level = "z"
+#incremental=true
+debug = false
+
+[profile.release]
+lto = true
+opt-level = "z"
+debug = false

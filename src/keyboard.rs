@@ -1,0 +1,1 @@
+/persist/sync/hobby/electronics/stm32/rust/k2k2_loud_and_proud/src/keyboard.rs
