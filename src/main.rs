@@ -1,11 +1,10 @@
 #![no_main]
 #![no_std]
 #![feature(alloc_error_handler)]
-#![feature(clamp)]
-#![feature(const_fn)]
 #![feature(integer_atomics)]
+#![feature(const_fn_trait_bound)]
 
-//extern crate panic_halt;
+extern crate panic_halt;
 
 extern crate nb;
 //use no_std_compat::prelude::v1::*;
@@ -33,7 +32,7 @@ static ALLOCATOR: crate::trallocator::Trallocator<CortexMHeap> =
 //use core::panic::PanicInfo;
 //use core::sync::atomic::{self, Ordering};
 
-extern crate panic_semihosting;
+//extern crate panic_semihosting;
 /*
 use core::sync::atomic;
 use core::cmp::Ordering;
@@ -84,10 +83,12 @@ pub use stm32f1xx_hal::dma::CircReadDma as _stm32_hal_dma_CircReadDma;
 pub use stm32f1xx_hal::dma::ReadDma as _stm32_hal_dma_ReadDma;
 pub use stm32f1xx_hal::dma::WriteDma as _stm32_hal_dma_WriteDma;
 //pub use stm32f1xx_hal::pwm::PwmExt as _stm32_hal_pwm_PwmExt;
+use stm32f1xx_hal::prelude::_embedded_hal_watchdog_Watchdog;
+use stm32f1xx_hal::prelude::_embedded_hal_watchdog_WatchdogEnable;
 pub use stm32f1xx_hal::rcc::RccExt as _stm32_hal_rcc_RccExt;
 pub use stm32f1xx_hal::time::U32Ext as _stm32_hal_time_U32Ext;
 
-use ssd1306::{mode::TerminalMode, Builder};
+use ssd1306::{mode::TerminalMode, prelude::*, I2CDisplayInterface, Ssd1306};
 
 #[allow(deprecated)]
 //use embedded_hal::digital::v1::ToggleableOutputPin;
@@ -98,7 +99,6 @@ use embedded_hal::digital::v2_compat;
 
 use keytokey::Keyboard as K2KKeyboard;
 use keytokey::USBKeyOut;
-use stm32f1;
 use stm32f1xx_hal::stm32;
 use stm32f1xx_hal::{gpio, timer};
 use usb_device::bus;
@@ -246,7 +246,7 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
         KeyCode::LShift,
         KeyCode::RShift,
         premade::ActionHandler::new(Modifier::Shift as HandlerID),
-        keytokey::premade::ActionNone {},
+        premade::ActionToggleHandler { id: umlaut_id },
         premade::ActionToggleHandler { id: umlaut_id },
         400,
         1000,
@@ -335,6 +335,11 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
         UserKey::UK1,
         premade::ActionHandler::new(copy_pasta_layer_id),
     )));
+
+
+    k.add_handler(Box::new(
+               handlers::PressMacro::new(KeyCode::Stop,
+                                            vec!(KeyCode::LCtrl, KeyCode::I))));
 
     //k.add_handler(Box::new(myhandlers::DesktopSwitcher{}));
     //let grave_layer = vec![(KeyCode::Grave, SendStringShifted("~", "`"))];
@@ -499,10 +504,10 @@ const APP: () = {
     static mut HEAPSIZE: u32 = 0;
     static mut KEYCOUNTER: u32 = 0;
     static mut BACKUP_REGISTER: stm32f1xx_hal::backup_domain::BackupDomain = ();
-    static mut DISP: ssd1306::mode::terminal::TerminalMode<
-        ssd1306::interface::i2c::I2cInterface<
-            stm32f1xx_hal::i2c::BlockingI2c<
-                stm32f1::stm32f103::I2C1,
+    static mut DISP: Ssd1306<
+        I2CInterface<
+            BlockingI2c<
+                stm32f1xx_hal::pac::I2C1,
                 (
                     stm32f1xx_hal::gpio::gpiob::PB6<
                         stm32f1xx_hal::gpio::Alternate<stm32f1xx_hal::gpio::OpenDrain>,
@@ -513,7 +518,28 @@ const APP: () = {
                 ),
             >,
         >,
+        ssd1306::prelude::DisplaySize128x64,
+        TerminalMode,
     > = ();
+    /* Ssd1306<
+        I2CDisplayInterface,
+        /* <
+            stm32f1xx_hal::i2c::BlockingI2c<
+                stm32f1::stm32f103::I2C1,
+                (
+                    stm32f1xx_hal::gpio::gpiob::PB8<
+                        stm32f1xx_hal::gpio::Alternate<stm32f1xx_hal::gpio::OpenDrain>,
+                    >,
+                    stm32f1xx_hal::gpio::gpiob::PB9<
+                        stm32f1xx_hal::gpio::Alternate<stm32f1xx_hal::gpio::OpenDrain>,
+                    >,
+                ),
+            >,
+        >, */
+        DisplaySize128x64,
+        TerminalMode,
+    > = (); */
+    static mut WATCHDOG: stm32f1xx_hal::watchdog::IndependentWatchdog = ();
 
     #[init]
     fn init() -> init::LateResources {
@@ -525,15 +551,16 @@ const APP: () = {
 
         let mut flash = device.FLASH.constrain();
         let mut rcc = device.RCC.constrain();
+        let iwdg = device.IWDG;
         let bkp = rcc
             .bkp
             .constrain(device.BKP, &mut rcc.apb1, &mut device.PWR);
         //bkp.write_data_register_low(0, 0);
-
+        //
         let clocks = rcc
             .cfgr
             .use_hse(8.mhz())
-            .sysclk(72.mhz()) // use 72mhz to work with stm32duino bootloader
+            .sysclk(72.mhz())
             .pclk1(36.mhz())
             .freeze(&mut flash.acr);
         let mut afio = device.AFIO.constrain(&mut rcc.apb2);
@@ -544,7 +571,7 @@ const APP: () = {
         let (_pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
         let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
-        led.set_low().ok();
+        led.set_high().ok();
 
         let scl = gpiob.pb6.into_alternate_open_drain(&mut gpiob.crl);
         let sda = gpiob.pb7.into_alternate_open_drain(&mut gpiob.crl);
@@ -564,15 +591,14 @@ const APP: () = {
             1000,
             1000,
         );
+        let interface = I2CDisplayInterface::new(i2c);
+        let mut disp = Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate180)
+            .into_terminal_mode();
 
-        let mut disp: TerminalMode<_> = Builder::new().connect_i2c(i2c).into();
         disp.init().unwrap();
-        disp.set_rotation(ssd1306::displayrotation::DisplayRotation::Rotate180)
-            .ok();
         disp.clear().ok();
         disp.write_str("hello world!").ok();
         disp.set_position(0, 1).ok();
-        led.set_high().ok();
 
         disp.write_str(" how are you doing today???").ok();
 
@@ -599,10 +625,9 @@ const APP: () = {
         let usb_class = hid::HidClass::new(Keyboard::new(), &usb_bus);
         let usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(VID, PID))
             .manufacturer("TyberiusPrime")
-            .product("K2KAdvantageQ")
+            .product("K2KAdvantage")
             .serial_number(env!("CARGO_PKG_VERSION"))
             .build();
-        disp.write_str("usb init done").ok();
 
         let mut timer =
             timer::Timer::tim3(device.TIM3, &clocks, &mut rcc.apb1).start_count_down(100.hz());
@@ -616,8 +641,38 @@ const APP: () = {
         //let pin_rx = gpioa.pa10;
         //let mut afio = device.AFIO.constrain(&mut rcc.apb2);
 
-        use stm32f1xx_hal::gpio::State::High;
+        //let pre_matrix = ALLOCATOR.get();
+        /*inputs
+          pub PB3<Input<PullUp>>,
+          pub PB4<Input<PullUp>>,
+          pub PB5<Input<PullUp>>,
+          pub PB6<Input<PullUp>>,
+          pub PB7<Input<PullUp>>,
+          pub PB8<Input<PullUp>>,
+          pub PB9<Input<PullUp>>,
+          pub PA6<Input<PullUp>>,
+          pub PA5<Input<PullUp>>,
+          pub PA4<Input<PullUp>>,
+          pub PA3<Input<PullUp>>,
+          pub PA2<Input<PullUp>>,
+          pub PA1<Input<PullUp>>,
+          pub PA0<Input<PullUp>>,
+        */
+        /*
+          pub PB13<Output<PushPull>>,
+          pub PB14<Output<PushPull>>,
+          pub PB15<Output<PushPull>>,
+          pub PA8<Output<PushPull>>,
+          pub PA9<Output<PushPull>>,
+          //pub PA15<Output<PushPull>>,
+          pub PB11<Output<PushPull>>,
+          pub PB10<Output<PushPull>>,
+          pub PB1<Output<PushPull>>,
+          pub PB0<Output<PushPull>>,
+          pub PA7<Output<PushPull>>,
+        */
 
+        use stm32f1xx_hal::gpio::State::High;
         let matrix = Matrix::new(
             //diodes... b15, b3 b4 b5, a5, a4, a3,a2
             vec![
@@ -679,14 +734,14 @@ const APP: () = {
         let output = USBOut::new(usb_class);
         //output.tx.writeln(&format!("pre_matrix {}", pre_matrix));
         //output.tx.writeln(&format!("matrix {}", ALLOCATOR.get()));
-        disp.write_str("matrix init done").ok();
 
         let debouncer = Debouncer::new(matrix.len());
         //output.tx.writeln(&format!("debouncer {}", ALLOCATOR.get()));
 
         let k2k = get_keytokey(output);
 
-        disp.write_str("go go go").ok();
+        let mut watchdog = stm32f1xx_hal::watchdog::IndependentWatchdog::new(iwdg);
+        watchdog.start(stm32f1xx_hal::time::MilliSeconds(100));
 
         init::LateResources {
             USB_DEV: usb_dev,
@@ -699,6 +754,7 @@ const APP: () = {
             K2K: k2k,
             BACKUP_REGISTER: bkp,
             DISP: disp,
+            WATCHDOG: watchdog,
         }
     }
 
@@ -722,10 +778,11 @@ const APP: () = {
         }
     }
 
-    #[interrupt(priority = 2, resources = [CURRENT_TIME_MS, TIMER_MS])]
+    #[interrupt(priority = 2, resources = [CURRENT_TIME_MS, TIMER_MS, WATCHDOG])]
     fn TIM4() {
         resources.TIMER_MS.clear_update_interrupt_flag();
         *resources.CURRENT_TIME_MS += 1;
+        resources.WATCHDOG.feed();
     }
 
     #[interrupt(priority = 1, resources = [
@@ -739,13 +796,13 @@ const APP: () = {
         HEAPSIZE,
         BACKUP_REGISTER,
         DISP,
-        KEYCOUNTER,
+        KEYCOUNTER
     ])]
     fn TIM3() {
         resources.TIMER.clear_update_interrupt_flag();
         #[allow(deprecated)]
-        resources.MATRIX.read_matrix();
         resources.LED.toggle().ok();
+        resources.MATRIX.read_matrix();
 
         let states = &resources.MATRIX.output;
         let mut nothing_changed = true;
@@ -828,6 +885,7 @@ const APP: () = {
             resources.DISP.clear().ok();
             resources.DISP.write_str("Bootloader started").ok();
             stm32f1xx_hal::stm32::SCB::sys_reset();
+
         }
         match output {
             Some(mut output) => {
@@ -844,7 +902,6 @@ const APP: () = {
         };
     }
 };
-
 fn usb_poll(usb_dev: &mut UsbDevice<'static, UsbBusType>, keyboard: &mut KeyboardHidClass) {
     if usb_dev.poll(&mut [keyboard]) {
         keyboard.poll();
