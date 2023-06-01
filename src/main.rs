@@ -186,6 +186,7 @@ const TRANSLATION: &[u32] = {
         Y.to_u32(),            //0x3e
         O.to_u32(),            //0x3f
         UserKey::UK1.to_u32(), //0x40 the reflective light sensor
+        UserKey::UK2.to_u32(), //0x41 the 'trigger snippets f9'
     ]
     //missing: grave, bslash
 };
@@ -278,6 +279,7 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
         (KeyCode::D.to_u32(), KeyCode::Grave.to_u32()),
         (KeyCode::S.to_u32(), KeyCode::RBracket.to_u32()),
         (KeyCode::BSpace.to_u32(), KeyCode::Delete.to_u32()),
+        (KeyCode::H.to_u32(), UserKey::UK2.to_u32()),
     ];
     let other_layer_id = k.future_handler_id(1);
     k.add_handler(Box::new(handlers::RewriteLayer::new(&OTHER_MAP)));
@@ -298,35 +300,35 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
         (KeyCode::D.to_u32(), KeyCode::Paste.to_u32()),
         //(KeyCode::G.to_u32(), KeyCode::Cut.to_u32()),
         (KeyCode::B.to_u32(), KeyCode::Stop.to_u32()), // to ctrl-c later on.
-        //I really need to move the sensor by 10mm to the right before enabling this.
-        //(KeyCode::Space.to_u32(), KeyCode::Enter.to_u32()),
-        //(KeyCode::Kb6.to_u32(), KeyCode::VolumeDown.to_u32()),
-        //(KeyCode::Kb7.to_u32(), KeyCode::VolumeUp.to_u32()),
-        //(KeyCode::Kb1.to_u32(), UserKey::UK51.to_u32()),
-        //(KeyCode::Kb2.to_u32(), UserKey::UK52.to_u32()),
-        //(KeyCode::Kb3.to_u32(), UserKey::UK53.to_u32()),
-        //(KeyCode::Kb4.to_u32(), UserKey::UK54.to_u32()),
-        //(KeyCode::Kb5.to_u32(), UserKey::UK55.to_u32()),
-        //(KeyCode::Q.to_u32(), UserKey::UK56.to_u32()),
-        //(KeyCode::W.to_u32(), UserKey::UK57.to_u32()),
-        //(KeyCode::E.to_u32(), UserKey::UK58.to_u32()),
-        //(KeyCode::R.to_u32(), UserKey::UK59.to_u32()),
-        //
-        //num block
-        /*
-        (KeyCode::M.to_u32(), KeyCode::Kb1.to_u32()),
-        (KeyCode::Comma.to_u32(), KeyCode::Kb2.to_u32()),
-        (KeyCode::Dot.to_u32(), KeyCode::Kb3.to_u32()),
-        (KeyCode::J.to_u32(), KeyCode::Kb4.to_u32()),
-        (KeyCode::K.to_u32(), KeyCode::Kb5.to_u32()),
-        (KeyCode::L.to_u32(), KeyCode::Kb6.to_u32()),
-        (KeyCode::U.to_u32(), KeyCode::Kb7.to_u32()),
-        (KeyCode::I.to_u32(), KeyCode::Kb8.to_u32()),
-        (KeyCode::O.to_u32(), KeyCode::Kb9.to_u32()),
-        (KeyCode::Up.to_u32(), KeyCode::W.to_u32()),
-        (KeyCode::Down.to_u32(), KeyCode::E.to_u32()),
-        (KeyCode::N.to_u32(), KeyCode::Kb0.to_u32()),
-        */
+                                                       //I really need to move the sensor by 10mm to the right before enabling this.
+                                                       //(KeyCode::Space.to_u32(), KeyCode::Enter.to_u32()),
+                                                       //(KeyCode::Kb6.to_u32(), KeyCode::VolumeDown.to_u32()),
+                                                       //(KeyCode::Kb7.to_u32(), KeyCode::VolumeUp.to_u32()),
+                                                       //(KeyCode::Kb1.to_u32(), UserKey::UK51.to_u32()),
+                                                       //(KeyCode::Kb2.to_u32(), UserKey::UK52.to_u32()),
+                                                       //(KeyCode::Kb3.to_u32(), UserKey::UK53.to_u32()),
+                                                       //(KeyCode::Kb4.to_u32(), UserKey::UK54.to_u32()),
+                                                       //(KeyCode::Kb5.to_u32(), UserKey::UK55.to_u32()),
+                                                       //(KeyCode::Q.to_u32(), UserKey::UK56.to_u32()),
+                                                       //(KeyCode::W.to_u32(), UserKey::UK57.to_u32()),
+                                                       //(KeyCode::E.to_u32(), UserKey::UK58.to_u32()),
+                                                       //(KeyCode::R.to_u32(), UserKey::UK59.to_u32()),
+                                                       //
+                                                       //num block
+                                                       /*
+                                                       (KeyCode::M.to_u32(), KeyCode::Kb1.to_u32()),
+                                                       (KeyCode::Comma.to_u32(), KeyCode::Kb2.to_u32()),
+                                                       (KeyCode::Dot.to_u32(), KeyCode::Kb3.to_u32()),
+                                                       (KeyCode::J.to_u32(), KeyCode::Kb4.to_u32()),
+                                                       (KeyCode::K.to_u32(), KeyCode::Kb5.to_u32()),
+                                                       (KeyCode::L.to_u32(), KeyCode::Kb6.to_u32()),
+                                                       (KeyCode::U.to_u32(), KeyCode::Kb7.to_u32()),
+                                                       (KeyCode::I.to_u32(), KeyCode::Kb8.to_u32()),
+                                                       (KeyCode::O.to_u32(), KeyCode::Kb9.to_u32()),
+                                                       (KeyCode::Up.to_u32(), KeyCode::W.to_u32()),
+                                                       (KeyCode::Down.to_u32(), KeyCode::E.to_u32()),
+                                                       (KeyCode::N.to_u32(), KeyCode::Kb0.to_u32()),
+                                                       */
     ];
 
     k.add_handler(Box::new(handlers::RewriteLayer::new(&COPY_PASTE_MAP)));
@@ -336,10 +338,14 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
         premade::ActionHandler::new(copy_pasta_layer_id),
     )));
 
-
-    k.add_handler(Box::new(
-               handlers::PressMacro::new(KeyCode::Stop,
-                                            vec!(KeyCode::LCtrl, KeyCode::I))));
+    k.add_handler(Box::new(handlers::PressMacro::new(
+        KeyCode::Stop,
+        vec![KeyCode::LCtrl, KeyCode::I],
+    )));
+    k.add_handler(Box::new(handlers::PressMacro::new(
+        UserKey::UK2,
+        vec![KeyCode::LCtrl, KeyCode::LGui, KeyCode::F9],
+    )));
 
     //k.add_handler(Box::new(myhandlers::DesktopSwitcher{}));
     //let grave_layer = vec![(KeyCode::Grave, SendStringShifted("~", "`"))];
@@ -885,7 +891,6 @@ const APP: () = {
             resources.DISP.clear().ok();
             resources.DISP.write_str("Bootloader started").ok();
             stm32f1xx_hal::stm32::SCB::sys_reset();
-
         }
         match output {
             Some(mut output) => {
