@@ -296,10 +296,10 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
 
     let copy_pasta_layer_id = k.future_handler_id(1);
     const COPY_PASTE_MAP: &[(u32, u32)] = &[
-        (KeyCode::F.to_u32(), KeyCode::Copy.to_u32()),
-        (KeyCode::D.to_u32(), KeyCode::Paste.to_u32()),
+        (KeyCode::PgDown.to_u32(), KeyCode::Copy.to_u32()),
+        (KeyCode::PgUp.to_u32(), KeyCode::Paste.to_u32()),
         //(KeyCode::G.to_u32(), KeyCode::Cut.to_u32()),
-        (KeyCode::B.to_u32(), KeyCode::Stop.to_u32()), // to ctrl-c later on.
+        //(KeyCode::B.to_u32(), KeyCode::Stop.to_u32()), // to ctrl-c later on.
                                                        //I really need to move the sensor by 10mm to the right before enabling this.
                                                        //(KeyCode::Space.to_u32(), KeyCode::Enter.to_u32()),
                                                        //(KeyCode::Kb6.to_u32(), KeyCode::VolumeDown.to_u32()),
