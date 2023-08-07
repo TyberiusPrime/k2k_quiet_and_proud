@@ -263,7 +263,7 @@ pub fn get_keytokey<'a, T: USBKeyOut>(output: T) -> K2KKeyboard<'a, T> {
     )));
 
     const OTHER_MAP: &[(u32, u32)] = &[
-        (KeyCode::RBracket.to_u32(), KeyCode::F1.to_u32()),
+        (KeyCode::Minus.to_u32(), KeyCode::F1.to_u32()),
         (KeyCode::Kb1.to_u32(), KeyCode::F2.to_u32()),
         (KeyCode::Kb2.to_u32(), KeyCode::F3.to_u32()),
         (KeyCode::Kb3.to_u32(), KeyCode::F4.to_u32()),
