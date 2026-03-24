@@ -22,6 +22,7 @@ smallbitvec = "2.5.1"
 stm32f1xx-hal = { version = "0.6.1", features = ["rt", "stm32f103", "stm32-usbd", "high"] }
 #stm32-usbd = { version = "0.3.0", features = ["stm32f103xx"] }
 usb-device = "0.2.0"
+usbd-serial = "0.1"
 
 
 [dependencies.keytokey]

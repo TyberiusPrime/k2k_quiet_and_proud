@@ -66,6 +66,7 @@ use rtfm::app;
 
 //use stm32f1xx_hal::prelude::*; can't use this with v2 digital traits
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+use usbd_serial::SerialPort;
 //use stm32f1xx_hal::gpio::{Alternate, Floating, Input, PushPull};
 //use stm32f1xx_hal::prelude::*;
 pub use stm32f1xx_hal::afio::AfioExt as _stm32_hal_afio_AfioExt;
@@ -107,6 +108,7 @@ use usb_device::prelude::*;
 
 type KeyboardHidClass = hid::HidClass<'static, UsbBusType, Keyboard>;
 type Led = gpio::gpioc::PC13<gpio::Output<gpio::PushPull>>;
+type UsbSerial = SerialPort<'static, UsbBusType>;
 
 // Generic keyboard from
 // https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
@@ -546,6 +548,7 @@ const APP: () = {
         TerminalMode,
     > = (); */
     static mut WATCHDOG: stm32f1xx_hal::watchdog::IndependentWatchdog = ();
+    static mut USB_SERIAL: UsbSerial = ();
 
     #[init]
     fn init() -> init::LateResources {
@@ -628,7 +631,10 @@ const APP: () = {
         }
         let usb_bus = unsafe { USB_BUS.as_ref().unwrap() };
 
+        // All USB classes must be allocated before UsbDevice is built.
         let usb_class = hid::HidClass::new(Keyboard::new(), &usb_bus);
+        // USB CDC serial — appears as /dev/ttyACM* for key-event capture
+        let usb_serial = SerialPort::new(usb_bus);
         let usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(VID, PID))
             .manufacturer("TyberiusPrime")
             .product("K2KAdvantage")
@@ -642,10 +648,6 @@ const APP: () = {
         let mut timer_ms =
             timer::Timer::tim4(device.TIM4, &clocks, &mut rcc.apb1).start_count_down(1000.hz());
         timer_ms.listen(timer::Event::Update);
-
-        //let pin_tx = gpioa.pa9.into_alternate_push_pull(&mut gpioa.crh);
-        //let pin_rx = gpioa.pa10;
-        //let mut afio = device.AFIO.constrain(&mut rcc.apb2);
 
         //let pre_matrix = ALLOCATOR.get();
         /*inputs
@@ -761,17 +763,18 @@ const APP: () = {
             BACKUP_REGISTER: bkp,
             DISP: disp,
             WATCHDOG: watchdog,
+            USB_SERIAL: usb_serial,
         }
     }
 
-    #[interrupt(priority = 3, resources = [USB_DEV, K2K])]
+    #[interrupt(priority = 3, resources = [USB_DEV, K2K, USB_SERIAL])]
     fn USB_HP_CAN_TX() {
-        usb_poll(&mut resources.USB_DEV, &mut resources.K2K.output.usb_class);
+        usb_poll(&mut resources.USB_DEV, &mut resources.K2K.output.usb_class, resources.USB_SERIAL);
     }
 
-    #[interrupt(priority = 3, resources = [USB_DEV, K2K])]
+    #[interrupt(priority = 3, resources = [USB_DEV, K2K, USB_SERIAL])]
     fn USB_LP_CAN_RX0() {
-        usb_poll(&mut resources.USB_DEV, &mut resources.K2K.output.usb_class);
+        usb_poll(&mut resources.USB_DEV, &mut resources.K2K.output.usb_class, resources.USB_SERIAL);
         if let Some(report) = resources.K2K.output.buffer.pop_front() {
             match resources.K2K.output.usb_class.write(report.as_bytes()) {
                 Ok(0) => {
@@ -782,6 +785,9 @@ const APP: () = {
                 Err(_) => {}
             };
         }
+        // Drain any bytes the host sends us (prevents CDC stall)
+        let mut _discard = [0u8; 64];
+        let _ = resources.USB_SERIAL.read(&mut _discard);
     }
 
     #[interrupt(priority = 2, resources = [CURRENT_TIME_MS, TIMER_MS, WATCHDOG])]
@@ -802,7 +808,8 @@ const APP: () = {
         HEAPSIZE,
         BACKUP_REGISTER,
         DISP,
-        KEYCOUNTER
+        KEYCOUNTER,
+        USB_SERIAL
     ])]
     fn TIM3() {
         resources.TIMER.clear_update_interrupt_flag();
@@ -821,6 +828,9 @@ const APP: () = {
         let mut update_last_time = false;
         let last_hs = *resources.HEAPSIZE;
         let hs = ALLOCATOR.get();
+        // Serial event buffer: (P=press/R=release, matrix_index), stack-allocated
+        let mut serial_events = [(0u8, 0u8); 8];
+        let mut num_serial_events = 0usize;
         let feedback: (Option<String>, bool) = resources.K2K.lock(|k2k| {
             //matrix::Matrix::debug_serial(&states, &mut k2k.output.tx);
             if hs != last_hs {
@@ -833,6 +843,10 @@ const APP: () = {
                     DebounceResult::Pressed => {
                         //use cortex_m_semihosting::hprintln;
                         //hprintln!("K: {:x}", ii as u32).ok();
+                        if num_serial_events < serial_events.len() {
+                            serial_events[num_serial_events] = (b'P', ii as u8);
+                            num_serial_events += 1;
+                        }
                         nothing_changed = false;
                         k2k.add_keypress(
                             *TRANSLATION.get(ii).unwrap_or(&(ii as u32)),
@@ -844,6 +858,10 @@ const APP: () = {
                         output = Some(format!("Argh ME: {:x} hs: {}", ii as u32, hs));
                     }
                     DebounceResult::Released => {
+                        if num_serial_events < serial_events.len() {
+                            serial_events[num_serial_events] = (b'R', ii as u8);
+                            num_serial_events += 1;
+                        }
                         nothing_changed = false;
                         k2k.add_keyrelease(
                             *TRANSLATION.get(ii).unwrap_or(&(ii as u32)),
@@ -884,6 +902,13 @@ const APP: () = {
             *resources.LAST_TIME_MS = current_time_ms;
         }
         *resources.HEAPSIZE = hs;
+        if num_serial_events > 0 {
+            resources.USB_SERIAL.lock(|serial| {
+                for i in 0..num_serial_events {
+                    write_serial_event(serial, serial_events[i].0, serial_events[i].1);
+                }
+            });
+        }
         let output = feedback.0;
         let enter_bootloader = feedback.1;
         if enter_bootloader {
@@ -907,8 +932,26 @@ const APP: () = {
         };
     }
 };
-fn usb_poll(usb_dev: &mut UsbDevice<'static, UsbBusType>, keyboard: &mut KeyboardHidClass) {
-    if usb_dev.poll(&mut [keyboard]) {
+fn usb_poll(
+    usb_dev: &mut UsbDevice<'static, UsbBusType>,
+    keyboard: &mut KeyboardHidClass,
+    serial: &mut UsbSerial,
+) {
+    if usb_dev.poll(&mut [keyboard as &mut dyn usb_device::class::UsbClass<UsbBusType>, serial]) {
         keyboard.poll();
     }
+}
+
+fn write_serial_event(serial: &mut UsbSerial, event_type: u8, key_idx: u8) {
+    fn to_hex(n: u8) -> u8 {
+        if n < 10 { b'0' + n } else { b'A' + n - 10 }
+    }
+    let buf = [
+        event_type,
+        to_hex(key_idx >> 4),
+        to_hex(key_idx & 0x0f),
+        b'\n',
+    ];
+    // Write best-effort; drop bytes if USB not ready
+    let _ = serial.write(&buf);
 }
