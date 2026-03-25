@@ -1,1 +1,0 @@
-/persist/sync/hobby/electronics/stm32/rust/k2k_macropad/flash_dfu.sh

@@ -1,1 +1,10 @@
-/persist/sync/hobby/electronics/stm32/rust/k2k2_loud_and_proud/openocd.gdb
+target remote :3333
+set print asm-demangle on
+monitor arm semihosting enable
+
+# detect unhandled exceptions, hard faults and panics
+break DefaultHandler
+break HardFault
+break rust_begin_unwind
+
+load

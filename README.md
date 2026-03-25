@@ -1,1 +1,9 @@
-/persist/sync/hobby/electronics/stm32/rust/k2k2_loud_and_proud/README.md
+# K2k_stm32f103
+
+A rust keyboard firmware for stm32f103 based microcontroller boards like the Bluepill.
+
+This firmware uses Key2Key for the intepretation of the key presses,
+which should be about feature equivalent with [QMK](https://github.com/qmk/qmk_firmware).
+
+
+(you need to rustup target add thumbv7m-none-eabi to be able to compile)

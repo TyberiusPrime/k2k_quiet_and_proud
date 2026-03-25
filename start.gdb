@@ -1,1 +1,4 @@
-/persist/sync/hobby/electronics/stm32/rust/k2k2_loud_and_proud/start.gdb
+target extended-remote COM9
+monitor swdp_scan
+att 1
+load k2k_advantage.elf

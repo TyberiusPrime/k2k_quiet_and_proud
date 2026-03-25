@@ -1,1 +1,99 @@
-/persist/sync/hobby/electronics/stm32/rust/k2k2_loud_and_proud/src/usbout.rs
+use crate::hid::KbHidReport;
+use crate::KeyboardHidClass;
+use core::clone::Clone;
+use keytokey::{KeyCode, KeyboardState, USBKeyOut};
+use no_std_compat::collections::VecDeque;
+use no_std_compat::prelude::v1::*;
+
+pub struct USBOut {
+    state: KeyboardState,
+    pub usb_class: KeyboardHidClass,
+    current_report: KbHidReport,
+    last_report: KbHidReport,
+    //pub tx: serial::Tx<stm32f1::stm32f103::USART1>,
+    pub buffer: VecDeque<KbHidReport>,
+    pub debug_str: String,
+    pub enter_bootloader: bool,
+}
+
+unsafe impl Sync for USBOut {}
+
+impl USBOut {
+    pub fn new(usb_class: KeyboardHidClass) -> USBOut {
+        USBOut {
+            state: KeyboardState::new(),
+            usb_class,
+            current_report: KbHidReport::default(),
+            last_report: KbHidReport::default(),
+            buffer: VecDeque::with_capacity(10),
+            debug_str: "".to_string(),
+            enter_bootloader: false,
+        }
+    }
+
+    fn send_report(&mut self, report: KbHidReport) {
+        /*
+         */
+        if report != self.last_report {
+            /*
+            use crate::StringSender;
+            if report.as_bytes() != [0u8; 8] {
+                self.tx.writeln(&format!("{:?}", report.as_bytes()));
+            }
+            */
+            self.last_report = report;
+            match self.usb_class.write(report.as_bytes()) {
+                Ok(0) => {
+                    self.buffer.push_back(report);
+                }
+                Ok(_i) => {} //we wrote the complete report, presumably.
+                Err(_) => {}
+            };
+        }
+    }
+}
+
+impl USBKeyOut for USBOut {
+    /// send these USB Keycodes concurrently rigth away.
+    fn send_keys(&mut self, keys: &[KeyCode]) {
+        let mut report = KbHidReport::default();
+        for k in keys {
+            report.pressed(*k);
+        }
+        self.send_report(report);
+    }
+    /// register these USB keycodes to be send on .send_registered
+    fn register_key(&mut self, key: KeyCode) {
+        self.current_report.pressed(key);
+    }
+    /// send registered keycodes (or an empty nothing-pressed status)
+    fn send_registered(&mut self) {
+        let report = self.current_report.clone();
+        self.send_report(report);
+        self.current_report.clear();
+    }
+
+    /// helper that sends an empty status
+    fn send_empty(&mut self) {
+        self.send_report(KbHidReport::default());
+    }
+
+    /// retrieve a mutable KeyboardState
+    fn state(&mut self) -> &mut KeyboardState {
+        return &mut self.state;
+    }
+
+    /// retrieve a KeyboardState
+    fn ro_state(&self) -> &KeyboardState {
+        return &self.state;
+    }
+    fn debug(&mut self, s: &str) {
+        // use cortex_m_semihosting::hprintln;
+        self.debug_str = s.to_string();
+        //hprintln!("{}", s).ok();
+    }
+
+    fn bootloader(&mut self) {
+        self.enter_bootloader = true;
+    }
+}
